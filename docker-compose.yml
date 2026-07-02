@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: radius
+      POSTGRES_PASSWORD: radius
+      POSTGRES_DB: radius_crm
+    ports:
+      - "5432:5432"
+    volumes:
+      - radius_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radius"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://radius:radius@db:5432/radius_crm
+      SECRET_KEY: dev-secret-change-in-production
+      ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
+      FRONTEND_URLS: http://localhost:5173
+    ports:
+      - "8000:8000"
+
+volumes:
+  radius_pgdata:

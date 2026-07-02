@@ -1,0 +1,20 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background: #0A0A0C;
+  -webkit-font-smoothing: antialiased;
+}
+select { appearance: none; -webkit-appearance: none; }
+::selection { background: rgba(203,161,53,0.3); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media print {
+  body * { visibility: hidden; }
+  #contract-print-area, #contract-print-area * { visibility: visible; }
+  #contract-print-area { position: absolute; top: 0; left: 0; width: 100%; }
+}
