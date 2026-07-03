@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_user
+from ..services import automation
 
 router = APIRouter(prefix="/leads", tags=["leads"], dependencies=[Depends(get_current_user)])
 
@@ -19,6 +20,8 @@ def create_lead(payload: schemas.LeadCreate, db: Session = Depends(get_db)):
     db.add(lead)
     db.commit()
     db.refresh(lead)
+    # Automation: fire after successful commit — never blocks the response
+    automation.on_lead_created(lead, db)
     return lead
 
 
@@ -27,10 +30,15 @@ def update_lead(lead_id: str, payload: schemas.LeadUpdate, db: Session = Depends
     lead = db.query(models.Lead).filter(models.Lead.id == lead_id).first()
     if not lead:
         raise HTTPException(404, "Lead not found")
+    old_stage = lead.stage
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(lead, k, v)
     db.commit()
     db.refresh(lead)
+    new_stage = lead.stage
+    # Automation: detect stage change and fire trigger
+    if old_stage != new_stage:
+        automation.on_lead_stage_changed(lead, old_stage, new_stage, db)
     return lead
 
 

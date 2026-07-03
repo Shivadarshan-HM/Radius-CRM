@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_user
+from ..services import automation
 
 router = APIRouter(prefix="/invoices", tags=["invoices"], dependencies=[Depends(get_current_user)])
 
@@ -19,6 +20,12 @@ def create_invoice(payload: schemas.InvoiceCreate, db: Session = Depends(get_db)
     db.add(invoice)
     db.commit()
     db.refresh(invoice)
+    # Automation: fetch client and fire trigger
+    client = (
+        db.query(models.Client).filter(models.Client.id == invoice.client_id).first()
+        if invoice.client_id else None
+    )
+    automation.on_invoice_created(invoice, client, db)
     return invoice
 
 

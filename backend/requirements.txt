@@ -10,3 +10,5 @@ bcrypt==4.2.0
 python-multipart==0.0.9
 python-dotenv==1.0.1
 python-dateutil==2.9.0.post0
+reportlab==4.2.5
+APScheduler==3.10.4

@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import String, Numeric, Date, DateTime, ForeignKey, Text
+from sqlalchemy import String, Numeric, Date, DateTime, ForeignKey, Text, Boolean, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -100,3 +100,27 @@ class Contract(Base):
 
     client = relationship("Client", back_populates="contracts")
     project = relationship("Project", back_populates="contracts")
+
+
+# ---------- Automation ----------
+
+class AutomationSettings(Base):
+    __tablename__ = "automation_settings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    automation_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    auto_acknowledge_leads: Mapped[bool] = mapped_column(Boolean, default=True)
+    auto_generate_sow_on_won: Mapped[bool] = mapped_column(Boolean, default=True)
+    auto_invoice_on_project_complete: Mapped[bool] = mapped_column(Boolean, default=True)
+    auto_whatsapp_invoice_reminders: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class AutomationLog(Base):
+    __tablename__ = "automation_logs"
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    event: Mapped[str] = mapped_column(String(100))
+    entity_type: Mapped[str] = mapped_column(String(50), default="")
+    entity_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    action: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(20), default="success")
+    detail: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

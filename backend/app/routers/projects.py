@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_user
+from ..services import automation
 
 router = APIRouter(prefix="/projects", tags=["projects"], dependencies=[Depends(get_current_user)])
 
@@ -27,10 +28,15 @@ def update_project(project_id: str, payload: schemas.ProjectUpdate, db: Session 
     project = db.query(models.Project).filter(models.Project.id == project_id).first()
     if not project:
         raise HTTPException(404, "Project not found")
+    old_status = project.status
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(project, k, v)
     db.commit()
     db.refresh(project)
+    new_status = project.status
+    # Automation: detect status change and fire trigger
+    if old_status != new_status:
+        automation.on_project_status_changed(project, old_status, new_status, db)
     return project
 
 

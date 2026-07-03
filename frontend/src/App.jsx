@@ -3,7 +3,8 @@ import {
   LayoutDashboard, Users, UserPlus, Briefcase, Receipt, FileText,
   Plus, X, Edit2, Trash2, Search, Mail, Phone, Building2,
   Calendar, Clock, CheckCircle2, AlertCircle, ChevronRight,
-  Printer, Globe, LogOut, Lock,
+  Printer, Globe, LogOut, Lock, MessageCircle, Download, Settings2,
+  Activity, ToggleLeft, ToggleRight, Zap,
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -12,6 +13,7 @@ import {
 import {
   getToken, clearToken, login as apiLogin, register as apiRegister, fetchMe, bootstrapStatus,
   clientsApi, leadsApi, projectsApi, invoicesApi, contractsApi, fetchAnalytics, ApiError,
+  automationApi, getLeadWhatsAppLink, getInvoiceWhatsAppLink, invoicePdfUrl, contractPdfUrl, downloadPdf,
 } from "./api";
 
 /* ============================== DESIGN TOKENS ============================== */
@@ -224,6 +226,7 @@ function Sidebar({ page, setPage, counts, onLogout }) {
     { key: "projects", label: "Projects", icon: Briefcase, count: counts.projects },
     { key: "invoices", label: "Invoices", icon: Receipt, count: counts.invoices },
     { key: "contracts", label: "Contracts", icon: FileText, count: counts.contracts },
+    { key: "automation", label: "Automation", icon: Zap },
   ];
   return (
     <div style={{ width: 232, flexShrink: 0, background: C.sidebar, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", height: "100vh", position: "sticky", top: 0 }}>
@@ -435,12 +438,16 @@ function LeadForm({ initial, onSave, onCancel }) {
     </form>
   );
 }
-function LeadCard({ lead, onEdit, onDelete, onStage }) {
+function LeadCard({ lead, onEdit, onDelete, onStage, onWhatsApp }) {
   return (
     <Card style={{ padding: 14, marginBottom: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text }}>{lead.company}</div>
-        <div style={{ display: "flex", gap: 4 }}><IconBtn icon={Edit2} onClick={() => onEdit(lead)} title="Edit" /><IconBtn icon={Trash2} tone="danger" onClick={() => onDelete(lead)} title="Delete" /></div>
+        <div style={{ display: "flex", gap: 4 }}>
+          {lead.phone && <IconBtn icon={MessageCircle} onClick={() => onWhatsApp(lead)} title="Open in WhatsApp" />}
+          <IconBtn icon={Edit2} onClick={() => onEdit(lead)} title="Edit" />
+          <IconBtn icon={Trash2} tone="danger" onClick={() => onDelete(lead)} title="Delete" />
+        </div>
       </div>
       {lead.contact_name && <div style={{ fontSize: 12, color: C.textDim, marginTop: 3 }}>{lead.contact_name}</div>}
       <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}><Badge>{lead.source}</Badge>{lead.value ? <Badge tone="accent">{formatINR(lead.value)}</Badge> : null}</div>
@@ -448,9 +455,19 @@ function LeadCard({ lead, onEdit, onDelete, onStage }) {
     </Card>
   );
 }
-function LeadsPage({ leads, onAdd, onUpdate, onDelete }) {
+function LeadsPage({ leads, onAdd, onUpdate, onDelete, onError }) {
   const [modal, setModal] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
+
+  async function handleWhatsApp(lead) {
+    try {
+      const data = await getLeadWhatsAppLink(lead.id);
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      onError(e.message || "Could not build WhatsApp link — make sure the lead has a phone number.");
+    }
+  }
+
   return (
     <div style={{ padding: "0 32px 40px" }}>
       <Topbar title="Leads" subtitle="Pipeline for prospective gym, business and web clients" action={<Btn icon={Plus} onClick={() => setModal({ mode: "add" })}>Add Lead</Btn>} />
@@ -465,7 +482,7 @@ function LeadsPage({ leads, onAdd, onUpdate, onDelete }) {
                 <span style={{ fontSize: 11, color: C.textFaint, fontFamily: FONT_MONO }}>{leads.filter((l) => l.stage === stage).length}</span>
               </div>
               {leads.filter((l) => l.stage === stage).map((lead) => (
-                <LeadCard key={lead.id} lead={lead} onEdit={(l) => setModal({ mode: "edit", data: l })} onDelete={(l) => setConfirmDel(l)} onStage={(l, stage) => onUpdate(l.id, { stage })} />
+                <LeadCard key={lead.id} lead={lead} onEdit={(l) => setModal({ mode: "edit", data: l })} onDelete={(l) => setConfirmDel(l)} onStage={(l, stage) => onUpdate(l.id, { stage })} onWhatsApp={handleWhatsApp} />
               ))}
             </div>
           ))}
@@ -665,7 +682,7 @@ function InvoiceForm({ initial, clients, projects, nextNumber, onSave, onCancel 
     </form>
   );
 }
-function InvoicesPage({ invoices, clients, projects, onAdd, onUpdate, onDelete }) {
+function InvoicesPage({ invoices, clients, projects, onAdd, onUpdate, onDelete, onError }) {
   const [modal, setModal] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
   const clientName = (id) => clients.find((c) => c.id === id)?.company || "—";
@@ -692,7 +709,12 @@ function InvoicesPage({ invoices, clients, projects, onAdd, onUpdate, onDelete }
                   <td style={{ padding: "13px 16px", fontFamily: FONT_MONO, fontSize: 13, color: C.accentBright }}>{formatINR(i.amount)}</td>
                   <td style={{ padding: "13px 16px" }}><Select value={i.status} onChange={(e) => onUpdate(i.id, { status: e.target.value })} style={{ fontSize: 12, padding: "5px 8px", width: "auto" }}>{INVOICE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}</Select></td>
                   <td style={{ padding: "13px 16px", fontSize: 12.5, color: C.textFaint }}>{formatDate(i.due_date)}</td>
-                  <td style={{ padding: "13px 16px" }}><div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}><IconBtn icon={Edit2} onClick={() => setModal({ mode: "edit", data: i })} title="Edit" /><IconBtn icon={Trash2} tone="danger" onClick={() => setConfirmDel(i)} title="Delete" /></div></td>
+                  <td style={{ padding: "13px 16px" }}><div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                    <IconBtn icon={MessageCircle} onClick={async () => { try { const d = await getInvoiceWhatsAppLink(i.id); window.open(d.url, "_blank", "noopener,noreferrer"); } catch (e) { onError(e.message); } }} title="WhatsApp reminder" />
+                    <IconBtn icon={Download} onClick={() => downloadPdf(invoicePdfUrl(i.id), `invoice-${i.number}.pdf`).catch((e) => onError(e.message))} title="Download PDF" />
+                    <IconBtn icon={Edit2} onClick={() => setModal({ mode: "edit", data: i })} title="Edit" />
+                    <IconBtn icon={Trash2} tone="danger" onClick={() => setConfirmDel(i)} title="Delete" />
+                  </div></td>
                 </tr>
               ))}
             </tbody>
@@ -747,11 +769,14 @@ function ContractPreview({ contract, client, project, onClose }) {
           <div style={{ fontSize: 11.5, color: "#888" }}><div>Accepted by {client?.company || "Client"}</div><div style={{ marginTop: 24, borderTop: "1px solid #999", width: 160 }} /></div>
         </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}><Btn variant="outline" icon={Printer} onClick={() => window.print()}>Print / Save as PDF</Btn></div>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+        <Btn variant="outline" icon={Download} onClick={() => downloadPdf(contractPdfUrl(contract.id), `${(contract.title || "contract").slice(0, 40)}.pdf`).catch(() => {})}>Download PDF</Btn>
+        <Btn variant="outline" icon={Printer} onClick={() => window.print()}>Print</Btn>
+      </div>
     </Modal>
   );
 }
-function ContractsPage({ contracts, clients, projects, onAdd, onUpdate, onDelete }) {
+function ContractsPage({ contracts, clients, projects, onAdd, onUpdate, onDelete, onError }) {
   const [modal, setModal] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -773,7 +798,11 @@ function ContractsPage({ contracts, clients, projects, onAdd, onUpdate, onDelete
                   <td style={{ padding: "13px 16px", fontSize: 13, color: C.textDim }}>{clientName(c.client_id)}</td>
                   <td style={{ padding: "13px 16px", fontFamily: FONT_MONO, fontSize: 13, color: C.accentBright }}>{c.value ? formatINR(c.value) : "—"}</td>
                   <td style={{ padding: "13px 16px" }}><Badge tone={contractTone(c.status)}>{c.status}</Badge></td>
-                  <td style={{ padding: "13px 16px" }} onClick={(e) => e.stopPropagation()}><div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}><IconBtn icon={Edit2} onClick={() => setModal({ mode: "edit", data: c })} title="Edit" /><IconBtn icon={Trash2} tone="danger" onClick={() => setConfirmDel(c)} title="Delete" /></div></td>
+                  <td style={{ padding: "13px 16px" }} onClick={(e) => e.stopPropagation()}><div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                    <IconBtn icon={Download} onClick={() => downloadPdf(contractPdfUrl(c.id), `${(c.title || "contract").slice(0, 40)}.pdf`).catch((e) => onError(e.message))} title="Download PDF" />
+                    <IconBtn icon={Edit2} onClick={() => setModal({ mode: "edit", data: c })} title="Edit" />
+                    <IconBtn icon={Trash2} tone="danger" onClick={() => setConfirmDel(c)} title="Delete" />
+                  </div></td>
                 </tr>
               ))}
             </tbody>
@@ -783,6 +812,200 @@ function ContractsPage({ contracts, clients, projects, onAdd, onUpdate, onDelete
       {modal && <Modal title={modal.mode === "add" ? "New Document" : "Edit Document"} onClose={() => setModal(null)}><ContractForm initial={modal.data} clients={clients} projects={projects} onCancel={() => setModal(null)} onSave={(f) => { modal.mode === "add" ? onAdd(f) : onUpdate(modal.data.id, f); setModal(null); }} /></Modal>}
       {confirmDel && <ConfirmDialog text={`Delete "${confirmDel.title}"?`} onCancel={() => setConfirmDel(null)} onConfirm={() => { onDelete(confirmDel.id); setConfirmDel(null); }} />}
       {preview && <ContractPreview contract={preview} client={clients.find((c) => c.id === preview.client_id)} project={projects.find((p) => p.id === preview.project_id)} onClose={() => setPreview(null)} />}
+    </div>
+  );
+}
+
+/* ============================== AUTOMATION ============================== */
+function Toggle({ value, onChange, label, description, master }) {
+  return (
+    <div
+      onClick={() => onChange(!value)}
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: master ? "16px 18px" : "13px 18px",
+        borderRadius: master ? 10 : 8,
+        background: master ? (value ? "rgba(203,161,53,0.08)" : C.dangerDim) : C.surface2,
+        border: `1px solid ${master ? (value ? C.accentBorder : "rgba(217,112,122,0.35)") : C.border}`,
+        cursor: "pointer", transition: "all 0.2s ease", userSelect: "none",
+      }}
+    >
+      <div>
+        <div style={{ fontSize: master ? 14.5 : 13.5, fontWeight: 600, color: C.text }}>{label}</div>
+        {description && <div style={{ fontSize: 12, color: C.textDim, marginTop: 3 }}>{description}</div>}
+      </div>
+      <div style={{ flexShrink: 0, marginLeft: 12 }}>
+        {value
+          ? <ToggleRight size={master ? 30 : 24} color={C.accent} />
+          : <ToggleLeft size={master ? 30 : 24} color={C.textFaint} />}
+      </div>
+    </div>
+  );
+}
+
+function AutomationPage({ onError }) {
+  const [settings, setSettings] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      const [s, l] = await Promise.all([automationApi.getSettings(), automationApi.getLogs()]);
+      setSettings(s);
+      setLogs(l);
+    } catch (e) {
+      onError(e.message || "Failed to load automation data.");
+    } finally {
+      setLogsLoading(false);
+    }
+  }, [onError]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Refresh logs every 30 seconds
+  useEffect(() => {
+    const id = setInterval(async () => {
+      try { const l = await automationApi.getLogs(); setLogs(l); } catch (_) {}
+    }, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  async function patch(key, value) {
+    try {
+      const updated = await automationApi.updateSettings({ [key]: value });
+      setSettings(updated);
+    } catch (e) {
+      onError(e.message || "Failed to save setting.");
+    }
+  }
+
+  const logStatusTone = (s) => s === "success" ? "success" : s === "failed" ? "danger" : "default";
+
+  const formatTs = (ts) => {
+    if (!ts) return "—";
+    try { return new Date(ts).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); }
+    catch (_) { return ts; }
+  };
+
+  return (
+    <div style={{ padding: "0 32px 40px" }}>
+      <Topbar
+        title="Automation"
+        subtitle="WhatsApp outreach links, document generation, and audit trail"
+        action={
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Activity size={14} color={C.textFaint} />
+            <span style={{ fontSize: 12, color: C.textFaint }}>{logs.length} log entries</span>
+          </div>
+        }
+      />
+
+      {!settings ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: C.textFaint, fontSize: 13 }}>Loading settings…</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 24, marginTop: 24 }}>
+
+          {/* Settings card */}
+          <Card style={{ padding: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, paddingBottom: 14, borderBottom: `1px solid ${C.border}` }}>
+              <Settings2 size={15} color={C.accent} />
+              <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 15, fontWeight: 600, color: C.text }}>Automation Settings</div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <Toggle
+                master
+                value={settings.automation_enabled}
+                onChange={(v) => patch("automation_enabled", v)}
+                label={settings.automation_enabled ? "🟢 Automation is ON" : "🔴 Automation is OFF"}
+                description={settings.automation_enabled
+                  ? "Active — triggers will fire on leads, projects, and invoices."
+                  : "Kill switch engaged — nothing fires. Turn on to activate all triggers below."}
+              />
+              <div style={{ height: 8 }} />
+              <Toggle
+                value={settings.auto_acknowledge_leads}
+                onChange={(v) => patch("auto_acknowledge_leads", v)}
+                label="Auto-acknowledge new leads"
+                description="Prepares a WhatsApp link when a new lead is added."
+              />
+              <Toggle
+                value={settings.auto_generate_sow_on_won}
+                onChange={(v) => patch("auto_generate_sow_on_won", v)}
+                label="Generate SOW when lead is Won"
+                description="Creates a Client, Project, and draft Scope of Work contract automatically."
+              />
+              <Toggle
+                value={settings.auto_invoice_on_project_complete}
+                onChange={(v) => patch("auto_invoice_on_project_complete", v)}
+                label="Create final invoice when project completes"
+                description="Generates a draft invoice for the remaining budget balance."
+              />
+              <Toggle
+                value={settings.auto_whatsapp_invoice_reminders}
+                onChange={(v) => patch("auto_whatsapp_invoice_reminders", v)}
+                label="WhatsApp reminders for invoices"
+                description="Prepares reminder links for sent invoices nearing or past their due date."
+              />
+            </div>
+          </Card>
+
+          {/* Activity log */}
+          <Card style={{ overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 20px", borderBottom: `1px solid ${C.border}` }}>
+              <Activity size={15} color={C.accent} />
+              <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 15, fontWeight: 600, color: C.text }}>Activity Log</div>
+              <span style={{ fontSize: 11.5, color: C.textFaint, marginLeft: 4 }}>— refreshes every 30 s</span>
+            </div>
+            {logsLoading ? (
+              <div style={{ padding: 40, textAlign: "center", color: C.textFaint, fontSize: 13 }}>Loading…</div>
+            ) : logs.length === 0 ? (
+              <EmptyState
+                icon={Activity}
+                title="No automation activity yet"
+                subtitle="Enable automation above, then create a lead or move one to Won to see entries here."
+              />
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                    {["Event", "Action", "Status", "When", ""].map((h) => (
+                      <th key={h} style={{ textAlign: "left", padding: "11px 16px", fontSize: 11, color: C.textFaint, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {logs.map((entry) => (
+                    <tr key={entry.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                      <td style={{ padding: "11px 16px", fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, color: C.textDim, whiteSpace: "nowrap" }}>{entry.event}</td>
+                      <td style={{ padding: "11px 16px", fontSize: 12.5, color: C.text, maxWidth: 280 }}>{entry.action}</td>
+                      <td style={{ padding: "11px 16px" }}><Badge tone={logStatusTone(entry.status)}>{entry.status}</Badge></td>
+                      <td style={{ padding: "11px 16px", fontSize: 11.5, color: C.textFaint, whiteSpace: "nowrap" }}>{formatTs(entry.created_at)}</td>
+                      <td style={{ padding: "11px 16px" }}>
+                        {entry.detail && entry.detail.startsWith("https://wa.me/") && (
+                          <a
+                            href={entry.detail}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: 5,
+                              fontSize: 12, color: C.success, textDecoration: "none",
+                              background: C.successDim, padding: "4px 10px", borderRadius: 7,
+                              border: "1px solid rgba(99,180,138,0.35)",
+                            }}
+                          >
+                            <MessageCircle size={12} /> Open WhatsApp
+                          </a>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Card>
+
+        </div>
+      )}
     </div>
   );
 }
@@ -910,11 +1133,12 @@ export default function App() {
           <Sidebar page={page} setPage={setPage} counts={counts} onLogout={handleLogout} />
           <div style={{ flex: 1, minWidth: 0 }}>
             {page === "dashboard" && <Dashboard leads={leads} clients={clients} projects={projects} invoices={invoices} analytics={analytics} setPage={setPage} />}
-            {page === "leads" && <LeadsPage leads={leads} onAdd={leadsCrud.add} onUpdate={leadsCrud.update} onDelete={leadsCrud.remove} />}
+            {page === "leads" && <LeadsPage leads={leads} onAdd={leadsCrud.add} onUpdate={leadsCrud.update} onDelete={leadsCrud.remove} onError={setError} />}
             {page === "clients" && <ClientsPage clients={clients} projects={projects} onAdd={clientsCrud.add} onUpdate={clientsCrud.update} onDelete={clientsCrud.remove} />}
             {page === "projects" && <ProjectsPage projects={projects} clients={clients} invoices={invoices} onAdd={projectsCrud.add} onUpdate={projectsCrud.update} onDelete={projectsCrud.remove} />}
-            {page === "invoices" && <InvoicesPage invoices={invoices} clients={clients} projects={projects} onAdd={invoicesCrud.add} onUpdate={invoicesCrud.update} onDelete={invoicesCrud.remove} />}
-            {page === "contracts" && <ContractsPage contracts={contracts} clients={clients} projects={projects} onAdd={contractsCrud.add} onUpdate={contractsCrud.update} onDelete={contractsCrud.remove} />}
+            {page === "invoices" && <InvoicesPage invoices={invoices} clients={clients} projects={projects} onAdd={invoicesCrud.add} onUpdate={invoicesCrud.update} onDelete={invoicesCrud.remove} onError={setError} />}
+            {page === "contracts" && <ContractsPage contracts={contracts} clients={clients} projects={projects} onAdd={contractsCrud.add} onUpdate={contractsCrud.update} onDelete={contractsCrud.remove} onError={setError} />}
+            {page === "automation" && <AutomationPage onError={setError} />}
           </div>
         </div>
       )}

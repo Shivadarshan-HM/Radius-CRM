@@ -1,12 +1,35 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .database import Base, engine, SessionLocal
 from .routers import auth, clients, leads, projects, invoices, contracts, analytics
+from .routers import automation
 from . import seed
+from .scheduler import start_scheduler, scheduler
 
-app = FastAPI(title="Radius Studios CRM API", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ---- Startup ----
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        seed.seed_admin(db)
+        seed.seed_sample_data(db)
+    finally:
+        db.close()
+    start_scheduler()
+    yield
+    # ---- Shutdown ----
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
+
+
+app = FastAPI(title="Radius Studios CRM API", version="1.0.0", lifespan=lifespan)
+print("=== DEBUG CORS ORIGINS ===", settings.cors_origins)
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,17 +46,7 @@ app.include_router(projects.router)
 app.include_router(invoices.router)
 app.include_router(contracts.router)
 app.include_router(analytics.router)
-
-
-@app.on_event("startup")
-def on_startup():
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    try:
-        seed.seed_admin(db)
-        seed.seed_sample_data(db)
-    finally:
-        db.close()
+app.include_router(automation.router)
 
 
 @app.get("/health")

@@ -96,4 +96,41 @@ export async function fetchAnalytics() {
   return request("/analytics/summary");
 }
 
+/* ---------- Automation ---------- */
+export const automationApi = {
+  getSettings: () => request("/automation/settings"),
+  updateSettings: (payload) => request("/automation/settings", { method: "PATCH", body: payload }),
+  getLogs: () => request("/automation/logs?limit=50"),
+};
+
+export const getLeadWhatsAppLink = (id) => request(`/automation/leads/${id}/whatsapp-link`);
+export const getInvoiceWhatsAppLink = (id) => request(`/automation/invoices/${id}/whatsapp-link`);
+
+/** Raw URL for blob-fetch pattern (needs auth header added manually) */
+export const invoicePdfUrl = (id) => `${BASE_URL}/automation/invoices/${id}/pdf`;
+export const contractPdfUrl = (id) => `${BASE_URL}/automation/contracts/${id}/pdf`;
+
+/**
+ * Download a PDF by fetching with auth header, converting to a blob,
+ * and triggering an <a download> click in the browser.
+ */
+export async function downloadPdf(url, filename) {
+  const token = getToken();
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    throw new ApiError(`PDF download failed (${res.status})`, res.status);
+  }
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(objectUrl);
+}
+
 export { ApiError };

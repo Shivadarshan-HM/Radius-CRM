@@ -207,3 +207,32 @@ class AnalyticsSummary(BaseModel):
     revenue_trend: list[RevenuePoint]
     lead_funnel: list[FunnelPoint]
     project_status: list[StatusPoint]
+
+
+# ---------- Automation ----------
+class AutomationSettingsOut(ORMBase):
+    id: int
+    automation_enabled: bool
+    auto_acknowledge_leads: bool
+    auto_generate_sow_on_won: bool
+    auto_invoice_on_project_complete: bool
+    auto_whatsapp_invoice_reminders: bool
+
+
+class AutomationSettingsUpdate(BaseModel):
+    automation_enabled: Optional[bool] = None
+    auto_acknowledge_leads: Optional[bool] = None
+    auto_generate_sow_on_won: Optional[bool] = None
+    auto_invoice_on_project_complete: Optional[bool] = None
+    auto_whatsapp_invoice_reminders: Optional[bool] = None
+
+
+class AutomationLogOut(ORMBase):
+    id: str
+    event: str
+    entity_type: str
+    entity_id: Optional[str]
+    action: str
+    status: str
+    detail: str
+    created_at: dt.datetime
