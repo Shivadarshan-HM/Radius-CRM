@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, UserPlus, Briefcase, Receipt, FileText,
   Plus, X, Edit2, Trash2, Search, Mail, Phone, Building2,
   Calendar, Clock, CheckCircle2, AlertCircle, ChevronRight,
   Printer, Globe, LogOut, Lock, MessageCircle, Download, Settings2,
-  Activity, ToggleLeft, ToggleRight, Zap,
+  Activity, ToggleLeft, ToggleRight, Zap, ListTodo, CheckSquare, Square, Loader2,
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -14,6 +15,7 @@ import {
   getToken, clearToken, login as apiLogin, register as apiRegister, fetchMe, bootstrapStatus,
   clientsApi, leadsApi, projectsApi, invoicesApi, contractsApi, fetchAnalytics, ApiError,
   automationApi, getLeadWhatsAppLink, getInvoiceWhatsAppLink, invoicePdfUrl, contractPdfUrl, downloadPdf,
+  tasksApi, searchApi, submitPublicLead,
 } from "./api";
 
 /* ============================== DESIGN TOKENS ============================== */
@@ -218,7 +220,7 @@ function LoginScreen({ onLoggedIn, needsBootstrap, setNeedsBootstrap }) {
 }
 
 /* ============================== SIDEBAR / TOPBAR ============================== */
-function Sidebar({ page, setPage, counts, onLogout }) {
+function Sidebar({ page, setPage, counts, onLogout, onOpenSearch }) {
   const items = [
     { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { key: "leads", label: "Leads", icon: UserPlus, count: counts.leads },
@@ -226,6 +228,7 @@ function Sidebar({ page, setPage, counts, onLogout }) {
     { key: "projects", label: "Projects", icon: Briefcase, count: counts.projects },
     { key: "invoices", label: "Invoices", icon: Receipt, count: counts.invoices },
     { key: "contracts", label: "Contracts", icon: FileText, count: counts.contracts },
+    { key: "tasks", label: "Tasks", icon: ListTodo, count: counts.tasks },
     { key: "automation", label: "Automation", icon: Zap },
   ];
   return (
@@ -238,7 +241,20 @@ function Sidebar({ page, setPage, counts, onLogout }) {
           </div>
         </div>
       </div>
-      <div style={{ padding: "14px 12px", display: "flex", flexDirection: "column", gap: 2, flex: 1, overflowY: "auto" }}>
+      {/* Search button */}
+      <div style={{ padding: "10px 12px 4px" }}>
+        <button
+          onClick={onOpenSearch}
+          style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: C.textFaint, fontSize: 12.5, fontFamily: FONT_BODY, cursor: "pointer", transition: "all 0.15s ease" }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.borderLight; e.currentTarget.style.background = C.hover; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surface; }}
+        >
+          <Search size={13} strokeWidth={2} />
+          <span style={{ flex: 1, textAlign: "left" }}>Search...</span>
+          <span style={{ fontSize: 10.5, color: C.textFaint, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 4, padding: "1px 5px", fontFamily: FONT_MONO }}>⌘K</span>
+        </button>
+      </div>
+      <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 2, flex: 1, overflowY: "auto" }}>
         {items.map((it) => {
           const active = page === it.key;
           return (
@@ -265,7 +281,9 @@ function Sidebar({ page, setPage, counts, onLogout }) {
     </div>
   );
 }
+
 function Topbar({ title, subtitle, action }) {
+
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "24px 32px 20px", borderBottom: `1px solid ${C.border}` }}>
       <div>
@@ -308,7 +326,46 @@ function ChartTooltip({ active, payload, label, formatter }) {
   );
 }
 
-function Dashboard({ leads, clients, projects, invoices, analytics, setPage }) {
+/* ============================== TASK DASHBOARD CARD ============================== */
+function TaskDashboardCard({ tasks, onToggleTask, setPage }) {
+  const today = todayISO();
+  const urgent = tasks
+    .filter((t) => t.status === "Pending" && (t.due_date <= today))
+    .sort((a, b) => (a.due_date || "").localeCompare(b.due_date || ""))
+    .slice(0, 5);
+  const isOverdue = (t) => t.due_date && t.due_date < today;
+
+  return (
+    <Card style={{ padding: 20, flex: "1 1 300px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <div style={{ width: 24, height: 24, borderRadius: 7, background: C.accentDim, display: "flex", alignItems: "center", justifyContent: "center" }}><ListTodo size={13} color={C.accent} /></div>
+          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 600, color: C.text }}>Today & Overdue</div>
+        </div>
+        <button onClick={() => setPage("tasks")} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}>View all <ChevronRight size={13} /></button>
+      </div>
+      {urgent.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: C.textFaint }}>Nothing due today. 🎉</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {urgent.map((t) => (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, paddingBottom: 8, borderBottom: `1px solid ${C.border}` }}>
+              <button onClick={() => onToggleTask(t)} style={{ background: "none", border: "none", cursor: "pointer", color: C.textDim, padding: 0, display: "flex", flexShrink: 0 }}>
+                <Square size={15} strokeWidth={1.8} />
+              </button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: C.text, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
+                {t.due_date && <div style={{ fontSize: 11, color: isOverdue(t) ? C.danger : C.textFaint, marginTop: 1 }}>{isOverdue(t) ? "Overdue · " : "Due "}{formatDate(t.due_date)}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function Dashboard({ leads, clients, projects, invoices, analytics, tasks, onToggleTask, setPage }) {
   const activeLeads = leads.filter((l) => l.stage !== "Won" && l.stage !== "Lost").length;
   const activeProjects = projects.filter((p) => p.status === "In Progress" || p.status === "Review").length;
   const outstanding = invoices.filter((i) => i.status === "Sent" || i.status === "Overdue").reduce((s, i) => s + Number(i.amount || 0), 0);
@@ -383,6 +440,7 @@ function Dashboard({ leads, clients, projects, invoices, analytics, setPage }) {
       </div>
 
       <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <TaskDashboardCard tasks={tasks} onToggleTask={onToggleTask} setPage={setPage} />
         <Card style={{ padding: 20, flex: "1 1 340px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 600, color: C.text }}>Recent Projects</div>
@@ -417,6 +475,7 @@ function Dashboard({ leads, clients, projects, invoices, analytics, setPage }) {
     </div>
   );
 }
+
 
 /* ============================== LEADS ============================== */
 function LeadForm({ initial, onSave, onCancel }) {
@@ -513,11 +572,19 @@ function ClientForm({ initial, onSave, onCancel }) {
     </form>
   );
 }
-function ClientsPage({ clients, projects, onAdd, onUpdate, onDelete }) {
+function ClientsPage({ clients, projects, onAdd, onUpdate, onDelete, openDetailId }) {
   const [modal, setModal] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
   const [detail, setDetail] = useState(null);
   const [q, setQ] = useState("");
+  // Auto-open detail modal when navigated to from search
+  useEffect(() => {
+    if (openDetailId) {
+      const c = clients.find((x) => x.id === openDetailId);
+      if (c) setDetail(c);
+    }
+  }, [openDetailId, clients]);
+
   const filtered = clients.filter((c) => c.company.toLowerCase().includes(q.toLowerCase()) || (c.industry || "").toLowerCase().includes(q.toLowerCase()));
   const projectCount = (clientId) => projects.filter((p) => p.client_id === clientId).length;
   return (
@@ -595,13 +662,21 @@ function ProjectForm({ initial, clients, onSave, onCancel }) {
     </form>
   );
 }
-function ProjectsPage({ projects, clients, invoices, onAdd, onUpdate, onDelete }) {
+function ProjectsPage({ projects, clients, invoices, onAdd, onUpdate, onDelete, openDetailId }) {
   const [modal, setModal] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
   const [detail, setDetail] = useState(null);
   const [filter, setFilter] = useState("All");
   const clientName = (id) => clients.find((c) => c.id === id)?.company || "—";
   const filtered = filter === "All" ? projects : projects.filter((p) => p.status === filter);
+  // Auto-open detail modal when navigated to from search
+  useEffect(() => {
+    if (openDetailId) {
+      const p = projects.find((x) => x.id === openDetailId);
+      if (p) setDetail(p);
+    }
+  }, [openDetailId, projects]);
+
   return (
     <div style={{ padding: "0 32px 40px" }}>
       <Topbar title="Projects" subtitle="Design, development and web app builds in flight" action={<Btn icon={Plus} onClick={() => setModal({ mode: "add" })}>Add Project</Btn>} />
@@ -1010,7 +1085,279 @@ function AutomationPage({ onError }) {
   );
 }
 
+
+/* ============================== TASKS PAGE ============================== */
+const TASK_RELATED_TYPES = ["", "lead", "client", "project"];
+
+function TaskForm({ initial, leads, clients, projects, onSave, onCancel }) {
+  const [f, setF] = useState(initial || { title: "", description: "", due_date: "", status: "Pending", related_type: "", related_id: "" });
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const relatedOptions = f.related_type === "lead" ? leads : f.related_type === "client" ? clients : f.related_type === "project" ? projects : [];
+  const relatedLabel = (item) => item.company || item.name || item.title || item.id;
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onSave({ ...f, due_date: f.due_date || null, related_id: f.related_id || null }); }} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Field label="Task title *"><Input required value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="e.g. Follow up with Ketone Gym" /></Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <Field label="Due date"><Input type="date" value={f.due_date || ""} onChange={(e) => set("due_date", e.target.value)} /></Field>
+        <Field label="Status">
+          <Select value={f.status} onChange={(e) => set("status", e.target.value)}>
+            <option value="Pending">Pending</option>
+            <option value="Done">Done</option>
+          </Select>
+        </Field>
+        <Field label="Related to">
+          <Select value={f.related_type} onChange={(e) => { set("related_type", e.target.value); set("related_id", ""); }}>
+            <option value="">— None —</option>
+            <option value="lead">Lead</option>
+            <option value="client">Client</option>
+            <option value="project">Project</option>
+          </Select>
+        </Field>
+        {f.related_type && (
+          <Field label={f.related_type.charAt(0).toUpperCase() + f.related_type.slice(1)}>
+            <Select value={f.related_id} onChange={(e) => set("related_id", e.target.value)}>
+              <option value="">— Select —</option>
+              {relatedOptions.map((item) => <option key={item.id} value={item.id}>{relatedLabel(item)}</option>)}
+            </Select>
+          </Field>
+        )}
+      </div>
+      <Field label="Notes / description"><TextArea value={f.description} onChange={(e) => set("description", e.target.value)} rows={2} /></Field>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}><Btn variant="outline" onClick={onCancel}>Cancel</Btn><Btn type="submit" variant="solid">Save Task</Btn></div>
+    </form>
+  );
+}
+
+function TasksPage({ tasks, leads, clients, projects, onAdd, onUpdate, onDelete }) {
+  const [modal, setModal] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const today = todayISO();
+
+  const getRelatedLabel = (task) => {
+    if (!task.related_type || !task.related_id) return null;
+    const arr = task.related_type === "lead" ? leads : task.related_type === "client" ? clients : task.related_type === "project" ? projects : [];
+    const item = arr.find((x) => x.id === task.related_id);
+    if (!item) return null;
+    return { type: task.related_type, name: item.company || item.name || "—" };
+  };
+
+  const groups = [
+    { label: "Overdue", tone: "danger", items: tasks.filter((t) => t.status === "Pending" && t.due_date && t.due_date < today) },
+    { label: "Today", tone: "warning", items: tasks.filter((t) => t.status === "Pending" && t.due_date === today) },
+    { label: "Upcoming", tone: "default", items: tasks.filter((t) => t.status === "Pending" && (!t.due_date || t.due_date > today)) },
+    { label: "Done", tone: "success", items: tasks.filter((t) => t.status === "Done") },
+  ];
+
+  return (
+    <div style={{ padding: "0 32px 40px" }}>
+      <Topbar title="Tasks" subtitle="Reminders, follow-ups and to-dos linked to your pipeline" action={<Btn icon={Plus} onClick={() => setModal({ mode: "add" })}>Add Task</Btn>} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 24, marginTop: 22 }}>
+        {groups.map(({ label, tone, items }) => (
+          items.length === 0 ? null : (
+            <div key={label}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: C.textFaint, letterSpacing: 0.4, textTransform: "uppercase" }}>{label}</span>
+                <span style={{ fontSize: 11, color: C.textFaint, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 999, padding: "0 6px", fontFamily: FONT_MONO }}>{items.length}</span>
+              </div>
+              <Card style={{ overflow: "hidden" }}>
+                {items.map((task, idx) => {
+                  const rel = getRelatedLabel(task);
+                  return (
+                    <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", borderBottom: idx < items.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                      <button onClick={() => onUpdate(task.id, { status: task.status === "Done" ? "Pending" : "Done" })}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: task.status === "Done" ? C.success : C.textFaint, padding: 0, display: "flex", flexShrink: 0 }}>
+                        {task.status === "Done" ? <CheckSquare size={16} strokeWidth={2} /> : <Square size={16} strokeWidth={1.8} />}
+                      </button>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, color: task.status === "Done" ? C.textFaint : C.text, fontWeight: 500, textDecoration: task.status === "Done" ? "line-through" : "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.title}</div>
+                        <div style={{ display: "flex", gap: 8, marginTop: 3, flexWrap: "wrap", alignItems: "center" }}>
+                          {task.due_date && <span style={{ fontSize: 11, color: label === "Overdue" ? C.danger : C.textFaint }}>{formatDate(task.due_date)}</span>}
+                          {rel && <Badge tone={rel.type === "lead" ? "info" : rel.type === "client" ? "success" : "accent"}>{rel.type}: {rel.name}</Badge>}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                        <IconBtn icon={Edit2} onClick={() => setModal({ mode: "edit", data: task })} title="Edit" />
+                        <IconBtn icon={Trash2} tone="danger" onClick={() => setConfirmDel(task)} title="Delete" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </Card>
+            </div>
+          )
+        ))}
+        {tasks.length === 0 && (
+          <Card><EmptyState icon={ListTodo} title="No tasks yet" subtitle="Add tasks to track follow-ups, reminders and project to-dos." action={<Btn icon={Plus} onClick={() => setModal({ mode: "add" })}>Add your first task</Btn>} /></Card>
+        )}
+      </div>
+      {modal && <Modal title={modal.mode === "add" ? "Add Task" : "Edit Task"} onClose={() => setModal(null)}><TaskForm initial={modal.data} leads={leads} clients={clients} projects={projects} onCancel={() => setModal(null)} onSave={(f) => { modal.mode === "add" ? onAdd(f) : onUpdate(modal.data.id, f); setModal(null); }} /></Modal>}
+      {confirmDel && <ConfirmDialog text={`Delete task "${confirmDel.title}"?`} onCancel={() => setConfirmDel(null)} onConfirm={() => { onDelete(confirmDel.id); setConfirmDel(null); }} />}
+    </div>
+  );
+}
+
+/* ============================== GLOBAL SEARCH MODAL ============================== */
+function GlobalSearchModal({ onClose, setPage, setOpenDetailClientId, setOpenDetailProjectId }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    if (q.length < 2) { setResults(null); return; }
+    setLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const data = await searchApi(q);
+        setResults(data);
+      } catch (_) {}
+      finally { setLoading(false); }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [q]);
+
+  const hasResults = results && (results.clients?.length || results.leads?.length || results.projects?.length || results.invoices?.length || results.contracts?.length);
+
+  function handleResult(type, item) {
+    onClose();
+    const pageMap = { clients: "clients", leads: "leads", projects: "projects", invoices: "invoices", contracts: "contracts" };
+    setPage(pageMap[type] || type);
+    if (type === "clients") setOpenDetailClientId(item.id);
+    if (type === "projects") setOpenDetailProjectId(item.id);
+  }
+
+  const CATEGORIES = [
+    { key: "clients", label: "Clients" },
+    { key: "leads", label: "Leads" },
+    { key: "projects", label: "Projects" },
+    { key: "invoices", label: "Invoices" },
+    { key: "contracts", label: "Contracts" },
+  ];
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(6,6,8,0.8)", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-start", justifyContent: "center", zIndex: 200, padding: "10vh 20px" }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: C.surface, border: `1px solid ${C.borderLight}`, borderRadius: 14, width: "100%", maxWidth: 540, boxShadow: "0 32px 80px rgba(0,0,0,0.6)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: `1px solid ${C.border}` }}>
+          <Search size={16} color={C.textFaint} strokeWidth={2} />
+          <input
+            ref={inputRef}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search clients, leads, projects, invoices, contracts…"
+            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 14, fontFamily: FONT_BODY }}
+          />
+          {loading && <Loader2 size={15} color={C.textFaint} style={{ animation: "spin 0.8s linear infinite" }} />}
+          <button onClick={onClose} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 5, color: C.textFaint, cursor: "pointer", padding: "2px 6px", fontSize: 10.5, fontFamily: FONT_MONO }}>ESC</button>
+        </div>
+        <div style={{ maxHeight: "60vh", overflowY: "auto", padding: q.length >= 2 ? "8px 0" : 0 }}>
+          {q.length < 2 && (
+            <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 13, color: C.textFaint }}>Type at least 2 characters to search…</div>
+          )}
+          {q.length >= 2 && !loading && !hasResults && results && (
+            <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 13, color: C.textFaint }}>No results for "{q}"</div>
+          )}
+          {results && CATEGORIES.map(({ key, label }) => {
+            const items = results[key] || [];
+            if (!items.length) return null;
+            return (
+              <div key={key}>
+                <div style={{ padding: "8px 16px 4px", fontSize: 10.5, fontWeight: 700, color: C.textFaint, letterSpacing: 0.5, textTransform: "uppercase" }}>{label}</div>
+                {items.map((item) => (
+                  <button key={item.id} onClick={() => handleResult(key, item)}
+                    style={{ width: "100%", display: "flex", flexDirection: "column", padding: "8px 16px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left", borderRadius: 0 }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = C.hover}
+                    onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
+                    <span style={{ fontSize: 13.5, color: C.text, fontWeight: 500 }}>{item.label}</span>
+                    {item.subtitle && <span style={{ fontSize: 11.5, color: C.textFaint, marginTop: 1 }}>{item.subtitle}</span>}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================== PUBLIC LEAD CAPTURE FORM ============================== */
+function LeadCaptureForm() {
+  const [f, setF] = useState({ company: "", contact_name: "", email: "", phone: "", message: "", website: "" });
+  const [status, setStatus] = useState("idle"); // idle | loading | success | error
+  const [errMsg, setErrMsg] = useState("");
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setStatus("loading");
+    try {
+      await submitPublicLead(f);
+      setStatus("success");
+    } catch (err) {
+      setErrMsg(err.message || "Something went wrong. Please try again.");
+      setStatus("error");
+    }
+  }
+
+  if (status === "success") {
+    return (
+      <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: FONT_BODY }}>
+        <div style={{ textAlign: "center", maxWidth: 440 }}>
+          <div style={{ width: 64, height: 64, borderRadius: 18, background: C.accentDim, border: `1px solid ${C.accentBorder}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+            <CheckCircle2 size={30} color={C.accent} />
+          </div>
+          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 26, fontWeight: 700, color: C.text, marginBottom: 10 }}>Thank you!</div>
+          <div style={{ fontSize: 15, color: C.textDim, lineHeight: 1.7 }}>We've received your enquiry and will get back to you shortly. In the meantime, check out our work at <a href="https://radiusstudios.in" style={{ color: C.accent }}>radiusstudios.in</a>.</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 20px", fontFamily: FONT_BODY }}>
+      <div style={{ width: "100%", maxWidth: 520 }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <img src="/logo.png" alt="Radius Studios" style={{ height: 44, objectFit: "contain", marginBottom: 16 }} />
+          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 28, fontWeight: 700, color: C.text, letterSpacing: -0.5 }}>Work with Radius Studios</div>
+          <div style={{ fontSize: 15, color: C.textDim, marginTop: 8 }}>Tell us about your project and we'll reach out within 24 hours.</div>
+        </div>
+        <Card style={{ padding: 28 }}>
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Honeypot — hidden from real users, bots will fill this */}
+            <input
+              type="text"
+              value={f.website}
+              onChange={(e) => set("website", e.target.value)}
+              tabIndex={-1}
+              aria-hidden="true"
+              style={{ display: "none" }}
+              autoComplete="off"
+            />
+            <Field label="Business / project name *"><Input required value={f.company} onChange={(e) => set("company", e.target.value)} placeholder="e.g. Ketone Gym & Fitness" /></Field>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <Field label="Your name *"><Input required value={f.contact_name} onChange={(e) => set("contact_name", e.target.value)} placeholder="Full name" /></Field>
+              <Field label="Phone"><Input type="tel" value={f.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+91 98765 43210" /></Field>
+            </div>
+            <Field label="Email *"><Input required type="email" value={f.email} onChange={(e) => set("email", e.target.value)} placeholder="you@example.com" /></Field>
+            <Field label="Tell us about your project"><TextArea rows={4} value={f.message} onChange={(e) => set("message", e.target.value)} placeholder="Describe what you need — website redesign, web app, branding, etc." /></Field>
+            {status === "error" && <div style={{ fontSize: 12.5, color: C.danger, background: C.dangerDim, padding: "8px 12px", borderRadius: 7 }}>{errMsg}</div>}
+            <Btn type="submit" variant="solid" disabled={status === "loading"} style={{ justifyContent: "center", padding: "12px 20px", fontSize: 14, marginTop: 4 }}>
+              {status === "loading" ? "Sending…" : "Send enquiry →"}
+            </Btn>
+          </form>
+        </Card>
+        <div style={{ textAlign: "center", marginTop: 20, fontSize: 12.5, color: C.textFaint }}>
+          <a href="https://radiusstudios.in" style={{ color: C.textFaint, textDecoration: "none" }}>radiusstudios.in</a> · <a href="mailto:radiusstudio.co@gmail.com" style={{ color: C.textFaint, textDecoration: "none" }}>radiusstudio.co@gmail.com</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ============================== APP ROOT ============================== */
+
 export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -1024,15 +1371,22 @@ export default function App() {
   const [invoices, setInvoices] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [analytics, setAnalytics] = useState(null);
+  const [tasks, setTasks] = useState([]);
   const [error, setError] = useState("");
+
+  // Global search modal
+  const [showSearch, setShowSearch] = useState(false);
+  // For navigating from search results → open detail modal on target page
+  const [openDetailClientId, setOpenDetailClientId] = useState(null);
+  const [openDetailProjectId, setOpenDetailProjectId] = useState(null);
 
   const loadAll = useCallback(async () => {
     setDataLoading(true);
     try {
-      const [l, c, p, i, ct, an] = await Promise.all([
-        leadsApi.list(), clientsApi.list(), projectsApi.list(), invoicesApi.list(), contractsApi.list(), fetchAnalytics(),
+      const [l, c, p, i, ct, an, ts] = await Promise.all([
+        leadsApi.list(), clientsApi.list(), projectsApi.list(), invoicesApi.list(), contractsApi.list(), fetchAnalytics(), tasksApi.list(),
       ]);
-      setLeads(l); setClients(c); setProjects(p); setInvoices(i); setContracts(ct); setAnalytics(an);
+      setLeads(l); setClients(c); setProjects(p); setInvoices(i); setContracts(ct); setAnalytics(an); setTasks(ts);
     } catch (e) {
       setError(e.message || "Failed to load data.");
     } finally {
@@ -1064,6 +1418,27 @@ export default function App() {
     window.addEventListener("radius-crm-unauthorized", onUnauthorized);
     return () => window.removeEventListener("radius-crm-unauthorized", onUnauthorized);
   }, [loadAll]);
+
+  // Cmd+K / Ctrl+K global shortcut to open search
+  useEffect(() => {
+    function onKeyDown(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setShowSearch((v) => !v);
+      }
+      if (e.key === "Escape") setShowSearch(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // Clear transient openDetail IDs after a short delay (so the page has mounted)
+  useEffect(() => {
+    if (openDetailClientId) { const t = setTimeout(() => setOpenDetailClientId(null), 800); return () => clearTimeout(t); }
+  }, [openDetailClientId]);
+  useEffect(() => {
+    if (openDetailProjectId) { const t = setTimeout(() => setOpenDetailProjectId(null), 800); return () => clearTimeout(t); }
+  }, [openDetailProjectId]);
 
   function handleLoggedIn() {
     setAuthed(true);
@@ -1109,39 +1484,58 @@ export default function App() {
     update: wrapAction(async (id, f) => { const updated = await contractsApi.update(id, f); setContracts((s) => s.map((x) => x.id === id ? updated : x)); }),
     remove: wrapAction(async (id) => { await contractsApi.remove(id); setContracts((s) => s.filter((x) => x.id !== id)); }),
   };
+  const tasksCrud = {
+    add: wrapAction(async (f) => { const created = await tasksApi.create(f); setTasks((s) => [created, ...s]); }),
+    update: wrapAction(async (id, f) => { const updated = await tasksApi.update(id, f); setTasks((s) => s.map((x) => x.id === id ? updated : x)); }),
+    remove: wrapAction(async (id) => { await tasksApi.remove(id); setTasks((s) => s.filter((x) => x.id !== id)); }),
+  };
 
-  if (!authChecked) {
-    return <div style={{ minHeight: "100vh", background: C.bg }} />;
+  // Authenticated shell content (used by the default route)
+  function AuthedShell() {
+    if (!authChecked) return <div style={{ minHeight: "100vh", background: C.bg }} />;
+    if (!authed) return <LoginScreen onLoggedIn={handleLoggedIn} needsBootstrap={needsBootstrap} setNeedsBootstrap={setNeedsBootstrap} />;
+
+    const counts = { leads: leads.length, clients: clients.length, projects: projects.length, invoices: invoices.length, contracts: contracts.length, tasks: tasks.filter((t) => t.status === "Pending").length };
+
+    return (
+      <div style={{ fontFamily: FONT_BODY, background: C.bg, minHeight: "100vh", color: C.text }}>
+        <ErrorBanner message={error} onDismiss={() => setError("")} />
+        {showSearch && (
+          <GlobalSearchModal
+            onClose={() => setShowSearch(false)}
+            setPage={(p) => { setPage(p); setShowSearch(false); }}
+            setOpenDetailClientId={setOpenDetailClientId}
+            setOpenDetailProjectId={setOpenDetailProjectId}
+          />
+        )}
+        {dataLoading ? (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", flexDirection: "column", gap: 12 }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", border: `2px solid ${C.border}`, borderTopColor: C.accent, animation: "spin 0.8s linear infinite" }} />
+            <div style={{ fontSize: 13, color: C.textFaint }}>Loading your workspace...</div>
+          </div>
+        ) : (
+          <div style={{ display: "flex" }}>
+            <Sidebar page={page} setPage={setPage} counts={counts} onLogout={handleLogout} onOpenSearch={() => setShowSearch(true)} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {page === "dashboard" && <Dashboard leads={leads} clients={clients} projects={projects} invoices={invoices} analytics={analytics} tasks={tasks} onToggleTask={(t) => tasksCrud.update(t.id, { status: t.status === "Done" ? "Pending" : "Done" })} setPage={setPage} />}
+              {page === "leads" && <LeadsPage leads={leads} onAdd={leadsCrud.add} onUpdate={leadsCrud.update} onDelete={leadsCrud.remove} onError={setError} />}
+              {page === "clients" && <ClientsPage clients={clients} projects={projects} onAdd={clientsCrud.add} onUpdate={clientsCrud.update} onDelete={clientsCrud.remove} openDetailId={openDetailClientId} />}
+              {page === "projects" && <ProjectsPage projects={projects} clients={clients} invoices={invoices} onAdd={projectsCrud.add} onUpdate={projectsCrud.update} onDelete={projectsCrud.remove} openDetailId={openDetailProjectId} />}
+              {page === "invoices" && <InvoicesPage invoices={invoices} clients={clients} projects={projects} onAdd={invoicesCrud.add} onUpdate={invoicesCrud.update} onDelete={invoicesCrud.remove} onError={setError} />}
+              {page === "contracts" && <ContractsPage contracts={contracts} clients={clients} projects={projects} onAdd={contractsCrud.add} onUpdate={contractsCrud.update} onDelete={contractsCrud.remove} onError={setError} />}
+              {page === "tasks" && <TasksPage tasks={tasks} leads={leads} clients={clients} projects={projects} onAdd={tasksCrud.add} onUpdate={tasksCrud.update} onDelete={tasksCrud.remove} />}
+              {page === "automation" && <AutomationPage onError={setError} />}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   }
-
-  if (!authed) {
-    return <LoginScreen onLoggedIn={handleLoggedIn} needsBootstrap={needsBootstrap} setNeedsBootstrap={setNeedsBootstrap} />;
-  }
-
-  const counts = { leads: leads.length, clients: clients.length, projects: projects.length, invoices: invoices.length, contracts: contracts.length };
 
   return (
-    <div style={{ fontFamily: FONT_BODY, background: C.bg, minHeight: "100vh", color: C.text }}>
-      <ErrorBanner message={error} onDismiss={() => setError("")} />
-      {dataLoading ? (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", flexDirection: "column", gap: 12 }}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", border: `2px solid ${C.border}`, borderTopColor: C.accent, animation: "spin 0.8s linear infinite" }} />
-          <div style={{ fontSize: 13, color: C.textFaint }}>Loading your workspace...</div>
-        </div>
-      ) : (
-        <div style={{ display: "flex" }}>
-          <Sidebar page={page} setPage={setPage} counts={counts} onLogout={handleLogout} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {page === "dashboard" && <Dashboard leads={leads} clients={clients} projects={projects} invoices={invoices} analytics={analytics} setPage={setPage} />}
-            {page === "leads" && <LeadsPage leads={leads} onAdd={leadsCrud.add} onUpdate={leadsCrud.update} onDelete={leadsCrud.remove} onError={setError} />}
-            {page === "clients" && <ClientsPage clients={clients} projects={projects} onAdd={clientsCrud.add} onUpdate={clientsCrud.update} onDelete={clientsCrud.remove} />}
-            {page === "projects" && <ProjectsPage projects={projects} clients={clients} invoices={invoices} onAdd={projectsCrud.add} onUpdate={projectsCrud.update} onDelete={projectsCrud.remove} />}
-            {page === "invoices" && <InvoicesPage invoices={invoices} clients={clients} projects={projects} onAdd={invoicesCrud.add} onUpdate={invoicesCrud.update} onDelete={invoicesCrud.remove} onError={setError} />}
-            {page === "contracts" && <ContractsPage contracts={contracts} clients={clients} projects={projects} onAdd={contractsCrud.add} onUpdate={contractsCrud.update} onDelete={contractsCrud.remove} onError={setError} />}
-            {page === "automation" && <AutomationPage onError={setError} />}
-          </div>
-        </div>
-      )}
-    </div>
+    <Routes>
+      <Route path="/apply" element={<LeadCaptureForm />} />
+      <Route path="*" element={<AuthedShell />} />
+    </Routes>
   );
 }

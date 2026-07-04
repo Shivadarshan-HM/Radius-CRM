@@ -124,3 +124,21 @@ class AutomationLog(Base):
     status: Mapped[str] = mapped_column(String(20), default="success")
     detail: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ---------- Tasks ----------
+
+class Task(Base):
+    __tablename__ = "tasks"
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Pending | Done
+    status: Mapped[str] = mapped_column(String(20), default="Pending")
+    # lead | client | project | "" (no relation)
+    related_type: Mapped[str] = mapped_column(String(20), default="")
+    # Stores the related entity's UUID as a plain string — no FK enforced
+    # because the type varies across three tables.
+    related_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

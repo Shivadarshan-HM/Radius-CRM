@@ -133,4 +133,18 @@ export async function downloadPdf(url, filename) {
   URL.revokeObjectURL(objectUrl);
 }
 
+/* ---------- Tasks ---------- */
+export const tasksApi = crud("tasks");
+
+/* ---------- Global search ---------- */
+export async function searchApi(q) {
+  return request(`/search?q=${encodeURIComponent(q)}`);
+}
+
+/* ---------- Public lead form (no auth) ---------- */
+export async function submitPublicLead(payload) {
+  return request("/public/leads", { method: "POST", body: payload, auth: false });
+}
+
 export { ApiError };
+

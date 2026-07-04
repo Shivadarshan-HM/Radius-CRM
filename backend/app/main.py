@@ -7,6 +7,8 @@ from .config import settings
 from .database import Base, engine, SessionLocal
 from .routers import auth, clients, leads, projects, invoices, contracts, analytics
 from .routers import automation
+from .routers import tasks, search
+from .routers import public as public_router
 from . import seed
 from .scheduler import start_scheduler, scheduler
 
@@ -47,6 +49,9 @@ app.include_router(invoices.router)
 app.include_router(contracts.router)
 app.include_router(analytics.router)
 app.include_router(automation.router)
+app.include_router(tasks.router)
+app.include_router(search.router)
+app.include_router(public_router.router)
 
 
 @app.get("/health")

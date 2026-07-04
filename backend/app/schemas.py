@@ -236,3 +236,58 @@ class AutomationLogOut(ORMBase):
     status: str
     detail: str
     created_at: dt.datetime
+
+
+# ---------- Task ----------
+class TaskBase(BaseModel):
+    title: str
+    description: str = ""
+    due_date: Optional[dt.date] = None
+    status: str = "Pending"
+    related_type: str = ""
+    related_id: Optional[str] = None
+
+
+class TaskCreate(TaskBase):
+    pass
+
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    due_date: Optional[dt.date] = None
+    status: Optional[str] = None
+    related_type: Optional[str] = None
+    related_id: Optional[str] = None
+
+
+class TaskOut(TaskBase, ORMBase):
+    id: str
+    created_at: dt.datetime
+
+
+# ---------- Public lead capture ----------
+class PublicLeadCreate(BaseModel):
+    company: str
+    contact_name: str = ""
+    email: str = ""
+    phone: str = ""
+    message: str = ""
+    # Honeypot — must always be empty from a legitimate browser submission
+    website: str = ""
+
+
+# ---------- Global search ----------
+class SearchItem(BaseModel):
+    id: str
+    label: str
+    subtitle: str = ""
+
+
+class SearchResults(BaseModel):
+    clients: list[SearchItem] = []
+    leads: list[SearchItem] = []
+    projects: list[SearchItem] = []
+    invoices: list[SearchItem] = []
+    contracts: list[SearchItem] = []
+

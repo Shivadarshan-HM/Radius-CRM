@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Work with Radius Studios</title>
+  <meta name="description" content="Get in touch with Radius Studios to discuss your web design or development project." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0A0A0C;
+      --surface: #111113;
+      --border: rgba(255,255,255,0.07);
+      --text: #F0EDE6;
+      --text-dim: #9A958A;
+      --text-faint: #5C5750;
+      --accent: #CBA135;
+      --accent-bright: #E4C464;
+      --accent-dim: rgba(203,161,53,0.14);
+      --success: #6DBF85;
+      --danger: #D9707A;
+      --danger-dim: rgba(217,112,122,0.14);
+      --font-body: 'Inter', -apple-system, sans-serif;
+      --font-display: 'Outfit', 'Inter', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap');
+
+    .container {
+      width: 100%;
+      max-width: 520px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .header img {
+      height: 44px;
+      object-fit: contain;
+      margin-bottom: 16px;
+    }
+
+    .header h1 {
+      font-family: var(--font-display);
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.4px;
+    }
+
+    .header p {
+      font-size: 14px;
+      color: var(--text-dim);
+      margin-top: 6px;
+      line-height: 1.6;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-bottom: 14px;
+    }
+
+    label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-dim);
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+
+    input, textarea, select {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 13.5px;
+      padding: 9px 12px;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--accent);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 90px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .btn {
+      width: 100%;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: var(--font-body);
+      cursor: pointer;
+      transition: background 0.15s ease;
+      margin-top: 6px;
+    }
+
+    .btn:hover { background: var(--accent-bright); }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+
+    .error-box {
+      font-size: 12.5px;
+      color: var(--danger);
+      background: var(--danger-dim);
+      padding: 8px 12px;
+      border-radius: 7px;
+      margin-bottom: 14px;
+    }
+
+    .success {
+      text-align: center;
+      padding: 40px 20px;
+    }
+
+    .success-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 18px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(203,161,53,0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      font-size: 30px;
+    }
+
+    .success h2 {
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .success p { font-size: 14px; color: var(--text-dim); line-height: 1.7; }
+    .success a { color: var(--accent); }
+
+    .footer {
+      text-align: center;
+      margin-top: 18px;
+      font-size: 12px;
+      color: var(--text-faint);
+    }
+
+    .footer a { color: var(--text-faint); text-decoration: none; }
+
+    @media (max-width: 520px) {
+      .row { grid-template-columns: 1fr; }
+    }
+
+    /* Honeypot */
+    .honey { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://radiusstudios.in/logo.png" alt="Radius Studios" onerror="this.style.display='none'" />
+      <h1>Work with Radius Studios</h1>
+      <p>Tell us about your project and we'll reach out within 24 hours.</p>
+    </div>
+
+    <div class="card" id="formCard">
+      <form id="leadForm">
+        <!-- Honeypot -->
+        <div class="honey">
+          <input type="text" name="website" id="website" autocomplete="off" tabindex="-1" />
+        </div>
+
+        <div class="field">
+          <label for="company">Business / project name *</label>
+          <input type="text" id="company" name="company" required placeholder="e.g. Ketone Gym & Fitness" />
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="contact_name">Your name *</label>
+            <input type="text" id="contact_name" name="contact_name" required placeholder="Full name" />
+          </div>
+          <div class="field">
+            <label for="phone">Phone</label>
+            <input type="tel" id="phone" name="phone" placeholder="+91 98765 43210" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="email">Email *</label>
+          <input type="email" id="email" name="email" required placeholder="you@example.com" />
+        </div>
+        <div class="field">
+          <label for="message">Tell us about your project</label>
+          <textarea id="message" name="message" placeholder="Describe what you need — website redesign, web app, branding, etc."></textarea>
+        </div>
+
+        <div class="error-box" id="errorBox" style="display:none;"></div>
+
+        <button type="submit" class="btn" id="submitBtn">Send enquiry →</button>
+      </form>
+
+      <div class="success" id="successView" style="display:none;">
+        <div class="success-icon">✅</div>
+        <h2>Thank you!</h2>
+        <p>We've received your enquiry and will get back to you shortly. Check out our work at <a href="https://radiusstudios.in" target="_blank">radiusstudios.in</a>.</p>
+      </div>
+    </div>
+
+    <div class="footer">
+      <a href="https://radiusstudios.in">radiusstudios.in</a> ·
+      <a href="mailto:radiusstudio.co@gmail.com">radiusstudio.co@gmail.com</a>
+    </div>
+  </div>
+
+  <script>
+    // Update this URL to point to your deployed backend
+    const API_URL = 'https://radius-crm.onrender.com';
+
+    document.getElementById('leadForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      const errorBox = document.getElementById('errorBox');
+
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+      errorBox.style.display = 'none';
+
+      const payload = {
+        company: document.getElementById('company').value.trim(),
+        contact_name: document.getElementById('contact_name').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        phone: document.getElementById('phone').value.trim(),
+        message: document.getElementById('message').value.trim(),
+        website: document.getElementById('website').value, // honeypot
+      };
+
+      try {
+        const res = await fetch(`${API_URL}/public/leads`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        // Always show success (prevent bot fingerprinting)
+        document.getElementById('leadForm').style.display = 'none';
+        document.getElementById('successView').style.display = 'block';
+      } catch (err) {
+        errorBox.textContent = 'Something went wrong. Please try again or email us directly.';
+        errorBox.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Send enquiry →';
+      }
+    });
+  </script>
+</body>
+</html>
