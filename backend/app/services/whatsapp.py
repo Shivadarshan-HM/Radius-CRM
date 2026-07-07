@@ -124,3 +124,30 @@ def invoice_reminder_message(invoice, client, overdue: bool = False) -> str:
             "— Radius Studios",
         ]
     return "\n".join(lines)
+
+
+def documents_ready_message(invoice, contract, client) -> str:
+    """Message when NDA + Invoice have been generated for a client."""
+    client_name = ""
+    if client:
+        client_name = getattr(client, "contact_name", "") or getattr(client, "company", "")
+    first = client_name.split()[0] if client_name else "there"
+
+    inv_number = getattr(invoice, "number", "") or ""
+    amount = getattr(invoice, "amount", 0) or 0
+    try:
+        amount_str = f"₹{float(amount):,.0f}"
+    except (TypeError, ValueError):
+        amount_str = str(amount)
+
+    lines = [
+        f"Hey {first} 👋",
+        "",
+        f"We've put together the NDA and invoice *{inv_number}* ({amount_str}) for our upcoming engagement.",
+        "",
+        "Please review the NDA and let us know if you have any questions. "
+        "Once everything looks good, we can get started right away!",
+        "",
+        "— Radius Studios",
+    ]
+    return "\n".join(lines)

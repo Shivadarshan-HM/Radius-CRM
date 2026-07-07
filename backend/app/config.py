@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     frontend_urls: str = "http://localhost:5173"
     admin_email: str = ""
     admin_password: str = ""
+    bank_name: str = ""
+    bank_account_name: str = ""
+    bank_account_number: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
 

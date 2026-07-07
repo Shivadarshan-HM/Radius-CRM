@@ -15,7 +15,7 @@ import {
   getToken, clearToken, login as apiLogin, register as apiRegister, fetchMe, bootstrapStatus,
   clientsApi, leadsApi, projectsApi, invoicesApi, contractsApi, fetchAnalytics, ApiError,
   automationApi, getLeadWhatsAppLink, getInvoiceWhatsAppLink, invoicePdfUrl, contractPdfUrl, downloadPdf,
-  tasksApi, searchApi, submitPublicLead,
+  tasksApi, searchApi, submitPublicLead, generateDocuments,
 } from "./api";
 
 /* ============================== DESIGN TOKENS ============================== */
@@ -555,7 +555,7 @@ function LeadsPage({ leads, onAdd, onUpdate, onDelete, onError }) {
 
 /* ============================== CLIENTS ============================== */
 function ClientForm({ initial, onSave, onCancel }) {
-  const [f, setF] = useState(initial || { company: "", contact_name: "", email: "", phone: "", industry: "", status: "Active", source: "Referral", notes: "" });
+  const [f, setF] = useState(initial || { company: "", contact_name: "", email: "", phone: "", industry: "", address: "", status: "Active", source: "Referral", notes: "" });
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSave(f); }} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -567,16 +567,27 @@ function ClientForm({ initial, onSave, onCancel }) {
         <Field label="Industry"><Input value={f.industry} onChange={(e) => set("industry", e.target.value)} placeholder="e.g. Fitness, Retail, SaaS" /></Field>
         <Field label="Status"><Select value={f.status} onChange={(e) => set("status", e.target.value)}>{CLIENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}</Select></Field>
       </div>
+      <Field label="Address"><TextArea value={f.address || ""} onChange={(e) => set("address", e.target.value)} rows={2} placeholder="Street, city, state, postal code" /></Field>
       <Field label="Notes"><TextArea value={f.notes} onChange={(e) => set("notes", e.target.value)} /></Field>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}><Btn variant="outline" onClick={onCancel}>Cancel</Btn><Btn type="submit" variant="solid">Save Client</Btn></div>
     </form>
   );
 }
-function ClientsPage({ clients, projects, onAdd, onUpdate, onDelete, openDetailId }) {
+function ClientsPage({ clients, projects, invoices, contracts, onAdd, onUpdate, onDelete, openDetailId, onError, setInvoices, setContracts, setAnalytics }) {
   const [modal, setModal] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
   const [detail, setDetail] = useState(null);
   const [q, setQ] = useState("");
+
+  // Generate NDA & Invoice state
+  const [genMode, setGenMode] = useState(false);
+  const [genProjectId, setGenProjectId] = useState("");
+  const [genLineItems, setGenLineItems] = useState([]);
+  const [genTax, setGenTax] = useState(0);
+  const [genLoading, setGenLoading] = useState(false);
+  const [genResult, setGenResult] = useState(null);
+  const [genDupWarning, setGenDupWarning] = useState(null);
+
   // Auto-open detail modal when navigated to from search
   useEffect(() => {
     if (openDetailId) {
@@ -587,6 +598,92 @@ function ClientsPage({ clients, projects, onAdd, onUpdate, onDelete, openDetailI
 
   const filtered = clients.filter((c) => c.company.toLowerCase().includes(q.toLowerCase()) || (c.industry || "").toLowerCase().includes(q.toLowerCase()));
   const projectCount = (clientId) => projects.filter((p) => p.client_id === clientId).length;
+
+  // --- Generate helpers ---
+  const detailProjects = detail ? projects.filter((p) => p.client_id === detail.id) : [];
+
+  function startGenerate() {
+    setGenResult(null);
+    setGenDupWarning(null);
+    if (detailProjects.length === 0) {
+      onError("This client has no projects — add a project first before generating documents.");
+      return;
+    }
+    const proj = detailProjects.length === 1 ? detailProjects[0] : null;
+    setGenProjectId(proj ? proj.id : "");
+    if (proj) {
+      setGenLineItems([{ description: proj.name, rate: Number(proj.budget) || 0, qty: 1 }]);
+    } else {
+      setGenLineItems([{ description: "", rate: 0, qty: 1 }]);
+    }
+    setGenTax(0);
+    setGenMode(true);
+  }
+
+  function onProjectSelect(pid) {
+    setGenProjectId(pid);
+    const proj = detailProjects.find((p) => p.id === pid);
+    if (proj) {
+      setGenLineItems([{ description: proj.name, rate: Number(proj.budget) || 0, qty: 1 }]);
+    }
+  }
+
+  function updateLineItem(idx, field, value) {
+    setGenLineItems((items) => items.map((it, i) => i === idx ? { ...it, [field]: field === "description" ? value : Number(value) || 0 } : it));
+  }
+  function removeLineItem(idx) {
+    setGenLineItems((items) => items.filter((_, i) => i !== idx));
+  }
+  function addLineItem() {
+    setGenLineItems((items) => [...items, { description: "", rate: 0, qty: 1 }]);
+  }
+
+  const genSubtotal = genLineItems.reduce((s, it) => s + (Number(it.rate) || 0) * (Number(it.qty) || 0), 0);
+  const genTaxAmount = genSubtotal * (Number(genTax) || 0) / 100;
+  const genTotal = Math.round(genSubtotal + genTaxAmount);
+
+  async function submitGenerate(force = false) {
+    if (!genProjectId) {
+      onError("Please select a project.");
+      return;
+    }
+    if (genLineItems.length === 0 || genLineItems.every((it) => !it.description)) {
+      onError("Add at least one line item with a description.");
+      return;
+    }
+    setGenLoading(true);
+    try {
+      const res = await generateDocuments(detail.id, {
+        project_id: genProjectId,
+        line_items: genLineItems.map((it) => ({ description: it.description, rate: Number(it.rate) || 0, qty: Number(it.qty) || 1 })),
+        tax_percent: Number(genTax) || 0,
+        force,
+      });
+      if (res.duplicate_warning && !force) {
+        setGenDupWarning(res.duplicate_warning);
+        setGenLoading(false);
+        return;
+      }
+      setGenResult(res);
+      setGenDupWarning(null);
+      // Add the new invoice and contract to global state
+      if (res.invoice) setInvoices((s) => [res.invoice, ...s]);
+      if (res.contract) setContracts((s) => [res.contract, ...s]);
+      if (setAnalytics) setAnalytics();
+    } catch (e) {
+      onError(e.message || "Failed to generate documents.");
+    }
+    setGenLoading(false);
+  }
+
+  function closeGenerate() {
+    setGenMode(false);
+    setGenResult(null);
+    setGenDupWarning(null);
+  }
+
+  const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
   return (
     <div style={{ padding: "0 32px 40px" }}>
       <Topbar title="Clients" subtitle="Everyone you've built for, or are building for" action={<Btn icon={Plus} onClick={() => setModal({ mode: "add" })}>Add Client</Btn>} />
@@ -617,23 +714,159 @@ function ClientsPage({ clients, projects, onAdd, onUpdate, onDelete, openDetailI
       {modal && <Modal title={modal.mode === "add" ? "Add Client" : "Edit Client"} onClose={() => setModal(null)}><ClientForm initial={modal.data} onCancel={() => setModal(null)} onSave={(f) => { modal.mode === "add" ? onAdd(f) : onUpdate(modal.data.id, f); setModal(null); }} /></Modal>}
       {confirmDel && <ConfirmDialog text={`Delete client "${confirmDel.company}"? Linked projects, invoices and contracts will be deleted too.`} onCancel={() => setConfirmDel(null)} onConfirm={() => { onDelete(confirmDel.id); setConfirmDel(null); }} />}
       {detail && (
-        <Modal title={detail.company} onClose={() => setDetail(null)} width={480}>
+        <Modal title={detail.company} onClose={() => { setDetail(null); closeGenerate(); }} width={genMode ? 640 : 480}>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Badge tone={clientTone(detail.status)}>{detail.status}</Badge>{detail.industry && <Badge>{detail.industry}</Badge>}{detail.source && <Badge>{detail.source}</Badge>}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: C.textDim }}>
               {detail.contact_name && <div style={{ display: "flex", gap: 8, alignItems: "center" }}><Users size={13} /> {detail.contact_name}</div>}
               {detail.email && <div style={{ display: "flex", gap: 8, alignItems: "center" }}><Mail size={13} /> {detail.email}</div>}
               {detail.phone && <div style={{ display: "flex", gap: 8, alignItems: "center" }}><Phone size={13} /> {detail.phone}</div>}
+              {detail.address && <div style={{ display: "flex", gap: 8, alignItems: "center" }}><Building2 size={13} /> {detail.address}</div>}
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}><Calendar size={13} /> Client since {formatDate(detail.created_at)}</div>
             </div>
             {detail.notes && <div style={{ fontSize: 13, color: C.textDim, lineHeight: 1.6, background: C.surface2, padding: 12, borderRadius: 8, border: `1px solid ${C.border}` }}>{detail.notes}</div>}
             <div>
               <div style={{ fontSize: 12, fontWeight: 600, color: C.textFaint, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 8 }}>Projects</div>
-              {projects.filter((p) => p.client_id === detail.id).length === 0 && <div style={{ fontSize: 12.5, color: C.textFaint }}>No projects linked yet.</div>}
-              {projects.filter((p) => p.client_id === detail.id).map((p) => (
+              {detailProjects.length === 0 && <div style={{ fontSize: 12.5, color: C.textFaint }}>No projects linked yet.</div>}
+              {detailProjects.map((p) => (
                 <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}><div style={{ fontSize: 13, color: C.text }}>{p.name}</div><Badge tone={projectTone(p.status)}>{p.status}</Badge></div>
               ))}
             </div>
+
+            {/* ---- Generate NDA & Invoice ---- */}
+            {!genMode && !genResult && (
+              <div style={{ marginTop: 8 }}>
+                <Btn icon={FileText} onClick={startGenerate}>Generate NDA &amp; Invoice</Btn>
+              </div>
+            )}
+
+            {genMode && !genResult && (
+              <div style={{ marginTop: 8, padding: 16, background: C.surface2, borderRadius: 10, border: `1px solid ${C.border}` }}>
+                <div style={{ fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 12 }}>Generate NDA &amp; Invoice</div>
+
+                {/* Project selector */}
+                {detailProjects.length > 1 && (
+                  <Field label="Project">
+                    <Select value={genProjectId} onChange={(e) => onProjectSelect(e.target.value)}>
+                      <option value="">— Select project —</option>
+                      {detailProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </Select>
+                  </Field>
+                )}
+                {detailProjects.length === 1 && (
+                  <div style={{ fontSize: 12.5, color: C.textDim, marginBottom: 8 }}>Project: <span style={{ color: C.text, fontWeight: 500 }}>{detailProjects[0].name}</span></div>
+                )}
+
+                {/* Line items table */}
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: C.textFaint, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 6 }}>Line Items</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 60px 100px 30px", gap: 6, alignItems: "center", marginBottom: 4 }}>
+                    <div style={{ fontSize: 10.5, color: C.textFaint, fontWeight: 600 }}>Description</div>
+                    <div style={{ fontSize: 10.5, color: C.textFaint, fontWeight: 600 }}>Rate (₹)</div>
+                    <div style={{ fontSize: 10.5, color: C.textFaint, fontWeight: 600 }}>Qty</div>
+                    <div style={{ fontSize: 10.5, color: C.textFaint, fontWeight: 600, textAlign: "right" }}>Total</div>
+                    <div />
+                  </div>
+                  {genLineItems.map((item, idx) => (
+                    <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 100px 60px 100px 30px", gap: 6, alignItems: "center", marginBottom: 4 }}>
+                      <Input value={item.description} onChange={(e) => updateLineItem(idx, "description", e.target.value)} placeholder="Service description" style={{ fontSize: 12.5, padding: "6px 8px" }} />
+                      <Input type="number" value={item.rate} onChange={(e) => updateLineItem(idx, "rate", e.target.value)} style={{ fontSize: 12.5, padding: "6px 8px", fontFamily: FONT_MONO }} />
+                      <Input type="number" value={item.qty} onChange={(e) => updateLineItem(idx, "qty", e.target.value)} style={{ fontSize: 12.5, padding: "6px 8px", fontFamily: FONT_MONO }} />
+                      <div style={{ fontSize: 12.5, fontFamily: FONT_MONO, color: C.text, textAlign: "right" }}>{formatINR((Number(item.rate) || 0) * (Number(item.qty) || 0))}</div>
+                      <IconBtn icon={X} tone="danger" onClick={() => removeLineItem(idx)} title="Remove" />
+                    </div>
+                  ))}
+                  <Btn variant="ghost" small onClick={addLineItem} style={{ marginTop: 4 }}>+ Add line</Btn>
+                </div>
+
+                {/* Tax input */}
+                <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
+                  <Field label="Tax %">
+                    <Input type="number" value={genTax} onChange={(e) => setGenTax(e.target.value)} style={{ width: 80, fontSize: 12.5, padding: "6px 8px", fontFamily: FONT_MONO }} />
+                  </Field>
+                </div>
+
+                {/* Live totals */}
+                <div style={{ marginTop: 12, padding: "10px 12px", background: C.surface, borderRadius: 8, border: `1px solid ${C.border}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.textDim, marginBottom: 4 }}>
+                    <span>Subtotal</span><span style={{ fontFamily: FONT_MONO }}>{formatINR(genSubtotal)}</span>
+                  </div>
+                  {Number(genTax) > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.textDim, marginBottom: 4 }}>
+                      <span>Tax ({genTax}%)</span><span style={{ fontFamily: FONT_MONO }}>{formatINR(genTaxAmount)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700, color: C.accent, borderTop: `1px solid ${C.border}`, paddingTop: 6 }}>
+                    <span>Total</span><span style={{ fontFamily: FONT_MONO }}>{formatINR(genTotal)}</span>
+                  </div>
+                </div>
+
+                {/* Duplicate warning */}
+                {genDupWarning && (
+                  <div style={{ marginTop: 10, padding: 10, background: C.warningDim, border: `1px solid rgba(217,162,75,0.35)`, borderRadius: 8, fontSize: 12.5, color: C.warning }}>
+                    <AlertCircle size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />
+                    {genDupWarning}
+                    <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                      <Btn small variant="outline" onClick={() => { setGenDupWarning(null); }}>Cancel</Btn>
+                      <Btn small onClick={() => submitGenerate(true)}>Generate Anyway</Btn>
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                {!genDupWarning && (
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+                    <Btn variant="outline" small onClick={closeGenerate}>Cancel</Btn>
+                    <Btn small onClick={() => submitGenerate(false)} disabled={genLoading}>
+                      {genLoading && <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />}
+                      Confirm &amp; Generate
+                    </Btn>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ---- Generation Result ---- */}
+            {genResult && (
+              <div style={{ marginTop: 8, padding: 16, background: C.surface2, borderRadius: 10, border: `1px solid ${C.accentBorder}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <CheckCircle2 size={18} color={C.success} />
+                  <span style={{ fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, color: C.text }}>Documents Generated</span>
+                </div>
+
+                {/* Invoice result */}
+                <div style={{ padding: "10px 12px", background: C.surface, borderRadius: 8, border: `1px solid ${C.border}`, marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: C.textFaint, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 6 }}>Invoice {genResult.invoice?.number}</div>
+                  <div style={{ fontSize: 14, fontFamily: FONT_MONO, color: C.accentBright, marginBottom: 8 }}>{formatINR(genResult.invoice?.amount)}</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Btn small variant="outline" icon={Download} onClick={() => downloadPdf(`${BASE_URL}${genResult.invoice_pdf_url}`, `invoice-${genResult.invoice?.number}.pdf`).catch((e) => onError(e.message))}>Download PDF</Btn>
+                    {genResult.invoice_whatsapp_url && (
+                      <Btn small variant="outline" icon={MessageCircle} onClick={() => window.open(genResult.invoice_whatsapp_url, "_blank", "noopener,noreferrer")}>Open WhatsApp</Btn>
+                    )}
+                  </div>
+                </div>
+
+                {/* NDA result */}
+                <div style={{ padding: "10px 12px", background: C.surface, borderRadius: 8, border: `1px solid ${C.border}`, marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: C.textFaint, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 6 }}>NDA — {detail.company}</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Btn small variant="outline" icon={Download} onClick={() => downloadPdf(`${BASE_URL}${genResult.contract_pdf_url}`, `NDA-${detail.company}.pdf`).catch((e) => onError(e.message))}>Download PDF</Btn>
+                    {genResult.contract_whatsapp_url && (
+                      <Btn small variant="outline" icon={MessageCircle} onClick={() => window.open(genResult.contract_whatsapp_url, "_blank", "noopener,noreferrer")}>Open WhatsApp</Btn>
+                    )}
+                  </div>
+                </div>
+
+                {/* Legal note */}
+                <div style={{ fontSize: 11, color: C.textFaint, fontStyle: "italic", lineHeight: 1.5, marginTop: 4 }}>
+                  This NDA is a standard template, not a substitute for legal review — have a lawyer check it before relying on it for a real engagement.
+                </div>
+
+                <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                  <Btn small variant="outline" onClick={closeGenerate}>Done</Btn>
+                </div>
+              </div>
+            )}
           </div>
         </Modal>
       )}
@@ -1519,7 +1752,7 @@ export default function App() {
             <div style={{ flex: 1, minWidth: 0 }}>
               {page === "dashboard" && <Dashboard leads={leads} clients={clients} projects={projects} invoices={invoices} analytics={analytics} tasks={tasks} onToggleTask={(t) => tasksCrud.update(t.id, { status: t.status === "Done" ? "Pending" : "Done" })} setPage={setPage} />}
               {page === "leads" && <LeadsPage leads={leads} onAdd={leadsCrud.add} onUpdate={leadsCrud.update} onDelete={leadsCrud.remove} onError={setError} />}
-              {page === "clients" && <ClientsPage clients={clients} projects={projects} onAdd={clientsCrud.add} onUpdate={clientsCrud.update} onDelete={clientsCrud.remove} openDetailId={openDetailClientId} />}
+              {page === "clients" && <ClientsPage clients={clients} projects={projects} invoices={invoices} contracts={contracts} onAdd={clientsCrud.add} onUpdate={clientsCrud.update} onDelete={clientsCrud.remove} openDetailId={openDetailClientId} onError={setError} setInvoices={setInvoices} setContracts={setContracts} setAnalytics={async () => setAnalytics(await fetchAnalytics())} />}
               {page === "projects" && <ProjectsPage projects={projects} clients={clients} invoices={invoices} onAdd={projectsCrud.add} onUpdate={projectsCrud.update} onDelete={projectsCrud.remove} openDetailId={openDetailProjectId} />}
               {page === "invoices" && <InvoicesPage invoices={invoices} clients={clients} projects={projects} onAdd={invoicesCrud.add} onUpdate={invoicesCrud.update} onDelete={invoicesCrud.remove} onError={setError} />}
               {page === "contracts" && <ContractsPage contracts={contracts} clients={clients} projects={projects} onAdd={contractsCrud.add} onUpdate={contractsCrud.update} onDelete={contractsCrud.remove} onError={setError} />}

@@ -35,6 +35,7 @@ class ClientBase(BaseModel):
     email: str = ""
     phone: str = ""
     industry: str = ""
+    address: str = ""
     status: str = "Active"
     source: str = ""
     notes: str = ""
@@ -51,6 +52,7 @@ class ClientUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     industry: Optional[str] = None
+    address: Optional[str] = None
     status: Optional[str] = None
     source: Optional[str] = None
     notes: Optional[str] = None
@@ -138,7 +140,8 @@ class InvoiceBase(BaseModel):
 
 
 class InvoiceCreate(InvoiceBase):
-    pass
+    line_items: Optional[list[dict]] = None
+    tax_percent: Optional[float] = None
 
 
 class InvoiceUpdate(BaseModel):
@@ -150,10 +153,14 @@ class InvoiceUpdate(BaseModel):
     status: Optional[str] = None
     issue_date: Optional[dt.date] = None
     due_date: Optional[dt.date] = None
+    line_items: Optional[list[dict]] = None
+    tax_percent: Optional[float] = None
 
 
 class InvoiceOut(InvoiceBase, ORMBase):
     id: str
+    line_items: Optional[list[dict]] = None
+    tax_percent: float = 0
 
 
 # ---------- Contract ----------
@@ -291,3 +298,21 @@ class SearchResults(BaseModel):
     invoices: list[SearchItem] = []
     contracts: list[SearchItem] = []
 
+
+# ---------- Generate NDA & Invoice ----------
+class GenerateDocumentsRequest(BaseModel):
+    project_id: Optional[str] = None
+    line_items: Optional[list[dict]] = None
+    tax_percent: float = 0
+    force: bool = False  # skip duplicate-guard if True
+
+
+class GenerateDocumentsResponse(BaseModel):
+    invoice: InvoiceOut
+    contract: ContractOut
+    invoice_pdf_url: str
+    contract_pdf_url: str
+    invoice_whatsapp_url: Optional[str] = None
+    contract_whatsapp_url: Optional[str] = None
+    duplicate_warning: Optional[str] = None
+    existing_nda_id: Optional[str] = None

@@ -141,6 +141,10 @@ export async function searchApi(q) {
   return request(`/search?q=${encodeURIComponent(q)}`);
 }
 
+/* ---------- Generate NDA & Invoice ---------- */
+export const generateDocuments = (clientId, payload) =>
+  request(`/clients/${clientId}/generate-documents`, { method: "POST", body: payload });
+
 /* ---------- Public lead form (no auth) ---------- */
 export async function submitPublicLead(payload) {
   return request("/public/leads", { method: "POST", body: payload, auth: false });
